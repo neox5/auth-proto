@@ -15,6 +15,7 @@ func (kc *Keycloak) VerifyTokenMiddleware(next http.Handler) http.Handler {
 		rawAccessToken, err := getAccessTokenFromRequest(r)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
 		}
 
 		// Verify token with Keycloak
@@ -41,6 +42,7 @@ func (kc *Keycloak) ValidateTokenMiddleware(next http.Handler) http.Handler {
 		rawAccessToken, err := getAccessTokenFromRequest(r)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
 		}
 
 		// Parse and verify JWT token

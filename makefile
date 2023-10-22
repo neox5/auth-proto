@@ -28,7 +28,7 @@ cleanup:
 
 server:
 	@echo "Starting Go server..."
-	@go run app/main.go
+	@go run app-backend/main.go
 
 # Show help
 help:
