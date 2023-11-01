@@ -1,2 +1,5 @@
 # container data
 data
+
+# System files
+.DS_Store
