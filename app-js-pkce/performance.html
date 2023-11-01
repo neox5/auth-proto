@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JS-PKCE - Performance</title>
+    <style>
+      a {
+        display: block;
+      }
+      textarea {
+        width: 100%; /* or specific width like 500px */
+        height: 300px; /* or your desired height */
+        background-color: #f0f0f0; /* light grey background */
+        color: #333; /* dark text color for readability */
+        font-family: monospace; /* monospace font for log readability */
+        border: 1px solid #ccc; /* subtle border */
+        padding: 10px;
+        overflow-y: auto; /* enable vertical scrolling */
+        resize: none; /* disable resizing */
+      }
+      .row {
+        display: flex;
+      }
+    </style>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/js-sha256/0.10.1/sha256.min.js"
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    ></script>
+  </head>
+  <body>
+    <div>
+      <label for="runsInput">Runs: </label>
+      <input type="number" id="runsInput" value="1000" min="1" />
+    </div>
+    <div>
+      <label for="batchSizeInput">Batch Size: </label>
+      <input type="number" id="batchSizeInput" value="200" min="1" />
+    </div>
+    <button id="run">Run</button>
+    <div class="row">
+      <textarea id="log1" readonly></textarea>
+      <textarea id="log2" readonly></textarea>
+    </div>
+    <script>
+      function log(el, ...args) {
+        const msg = args.join(" ") + "\n";
+        el.value += msg;
+        el.scrollTop = el.scrollHeight; // Scroll to the bottom
+      }
+
+      function clearLog(el) {
+        el.value = "";
+      }
+
+      async function comparePerformance(f1, f2, runs = 1_000_000, batchSize = 1) {
+        const log1 = document.getElementById("log1");
+        const log2 = document.getElementById("log2");
+        clearLog(log1);
+        clearLog(log2);
+
+        log(log1, `Performance test for ${f1.name ? f1.name : "f1"} started...`);
+        await testPerformance(f1, log1, runs, batchSize);
+
+        log(log2, `Performance test for ${f2.name ? f2.name : "f2"} started...`);
+        await testPerformance(f2, log2, runs, batchSize);
+      }
+
+      async function testPerformance(asyncFunction, logger, runs = 100_000, batchSize = 1) {
+        let iterations = 0;
+        let totalTime = 0;
+        let minTime = Infinity;
+        let maxTime = 0;
+        let timeArray = [];
+
+        log(logger, `Run ${runs} iterations in batches of ${batchSize}...`);
+
+        let i = runs;
+        while (i > 0) {
+          const currentBatchSize = Math.min(i, batchSize);
+          let batchTime = 0;
+
+          const startTime = performance.now();
+          for (let j = 0; j < currentBatchSize; j++) {
+            try {
+              await asyncFunction();
+              iterations++;
+            } catch (err) {
+              log(logger, "Error in execution:", err);
+              return; // Early exit if there's an error
+            }
+          }
+          const endTime = performance.now();
+
+          batchTime = endTime - startTime;
+          totalTime += batchTime;
+
+          const avgTime = batchTime / currentBatchSize;
+          minTime = Math.min(minTime, avgTime);
+          maxTime = Math.max(maxTime, avgTime);
+          timeArray.push(...new Array(currentBatchSize).fill(avgTime));
+
+          i -= currentBatchSize;
+        }
+
+        const averageTime = totalTime / runs;
+        const variance = timeArray.reduce((acc, val) => acc + Math.pow(val - averageTime, 2), 0) / runs;
+        const stdDeviation = Math.sqrt(variance);
+
+        log(logger, `Iterations: ${iterations}`);
+        log(logger, `Average time: ${formatTime(averageTime)}`);
+        log(logger, `Min time: ${formatTime(minTime)}`);
+        log(logger, `Max time: ${formatTime(maxTime)}`);
+        log(logger, `Standard Deviation: ${formatTime(stdDeviation)}`);
+      }
+
+      function formatTime(ms) {
+        // Convert to seconds
+        if (ms > 1000) {
+          let s = ms / 1000;
+          return s.toFixed(3) + "s";
+        }
+        // Convert to microseconds
+        else if (ms < 1) {
+          let us = ms * 1000;
+          return us.toFixed(3) + "us";
+        }
+        // Convert to nanoseconds
+        else if (ms < 0.001) {
+          // Less than 1 microsecond
+          let ns = ms * 1_000_000;
+          return ns.toFixed(3) + "ns";
+        }
+        // Keep as milliseconds
+        else {
+          return ms.toFixed(3) + "ms";
+        }
+      }
+
+      async function generatePKCEPair() {
+        // Generate the random byte array for the code verifier
+        const length = 32; // 32 bytes = 256 bits
+        const array = new Uint8Array(length);
+        window.crypto.getRandomValues(array);
+
+        // Convert the byte array to a base64 URL-encoded string for the code verifier
+        const codeVerifier = base64urlEncode(array);
+
+        // Convert the code verifier (base64 URL-encoded string) back to an ArrayBuffer
+        const encoder = new TextEncoder();
+        const codeVerifierBuffer = encoder.encode(codeVerifier);
+
+        // Generate the SHA-256 hash for the code challenge from the ASCII representation of the code verifier
+        const digest = await crypto.subtle.digest("SHA-256", codeVerifierBuffer);
+        const codeChallenge = base64urlEncode(new Uint8Array(digest));
+
+        return { codeVerifier, codeChallenge };
+      }
+
+      async function generatePKCEPair2() {
+        // Generate the random byte array for the code verifier
+        const length = 32; // 32 bytes = 256 bits
+        const array = new Uint8Array(length);
+        window.crypto.getRandomValues(array);
+
+        // Convert the byte array to a base64 URL-encoded string for the code verifier
+        const codeVerifier = base64urlEncode(array);
+
+        // Using js-sha256 to generate SHA-256 hash
+        const hash = sha256(codeVerifier);
+
+        // Convert the hex string of the hash to a Uint8Array
+        const buffer = hexStringToUint8Array(hash);
+
+        // Base64 URL encode the result
+        const codeChallenge = base64urlEncode(buffer);
+
+        return { codeVerifier, codeChallenge };
+      }
+
+      function hexStringToUint8Array(hexString) {
+        const length = hexString.length / 2;
+        const uint8Array = new Uint8Array(length);
+        for (let i = 0; i < length; i++) {
+          uint8Array[i] = parseInt(hexString.substr(i * 2, 2), 16);
+        }
+        return uint8Array;
+      }
+
+      function base64urlEncode(uint8Array) {
+        // Convert the Uint8Array to a string of characters
+        let chars = "";
+        for (let i = 0; i < uint8Array.length; i++) {
+          chars += String.fromCharCode(uint8Array[i]);
+        }
+
+        // Convert to Base64 and make it URL-safe
+        return btoa(chars)
+          .replace(/\+/g, "-") // Replace '+' with '-'
+          .replace(/\//g, "_") // Replace '/' with '_'
+          .replace(/=/g, ""); // Remove '=' padding
+      }
+
+      const run = document.getElementById("run");
+
+      function delay(delayMs) {
+        // The function that will be returned
+        function delayFunc() {
+          return new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+
+        // Dynamically set the function name
+        Object.defineProperty(delayFunc, "name", { value: `delay${delayMs}`, configurable: true });
+
+        return delayFunc;
+      }
+
+      run.addEventListener("click", async function () {
+        const runs = document.getElementById("runsInput").value;
+        const batchSize = document.getElementById("batchSizeInput").value;
+
+        const delay120 = delay(120);
+        const delay230 = delay(230);
+
+        console.log(delay120.name, delay230.name);
+
+        // await comparePerformance(generatePKCEPair, generatePKCEPair2, runs, batchSize);
+        await comparePerformance(delay120, delay230, runs, batchSize);
+      });
+    </script>
+  </body>
+</html>

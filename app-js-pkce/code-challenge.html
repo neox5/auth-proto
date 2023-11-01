@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JS-PKCE - Code Challenge</title>
+    <style>
+      a {
+        display: block;
+      }
+      textarea {
+        width: 100%; /* or specific width like 500px */
+        height: 300px; /* or your desired height */
+        background-color: #f0f0f0; /* light grey background */
+        color: #333; /* dark text color for readability */
+        font-family: monospace; /* monospace font for log readability */
+        border: 1px solid #ccc; /* subtle border */
+        padding: 10px;
+        overflow-y: auto; /* enable vertical scrolling */
+        resize: none; /* disable resizing */
+      }
+      .row {
+        display: flex;
+      }
+    </style>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/js-sha256/0.10.1/sha256.min.js"
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    ></script>
+  </head>
+  <body>
+    <button id="run">Run</button>
+    <div class="row">
+      <textarea id="log1" readonly></textarea>
+      <textarea id="log2" readonly></textarea>
+    </div>
+    <script>
+      function loadLog() {
+        const log = localStorage.getItem("log");
+        if (log) {
+          const el = document.getElementById("log");
+          el.value = log;
+        }
+      }
+
+      function log1(...args) {
+        const el = document.getElementById("log1");
+        const msg = args.join(" ") + "\n";
+        let log = localStorage.getItem("log1");
+        if (!log) log = "";
+        log += msg;
+
+        console.log(msg);
+
+        el.value += msg;
+        el.scrollTop = el.scrollHeight; // Scroll to the bottom
+
+        localStorage.setItem("log1", log);
+      }
+      function log2(...args) {
+        const el = document.getElementById("log2");
+        const msg = args.join(" ") + "\n";
+        let log = localStorage.getItem("log2");
+        if (!log) log = "";
+        log += msg;
+
+        console.log(msg);
+
+        el.value += msg;
+        el.scrollTop = el.scrollHeight; // Scroll to the bottom
+
+        localStorage.setItem("log2", log);
+      }
+
+      function clearLog() {
+        const el = document.getElementById("log");
+        el.value = "";
+        localStorage.setItem("log", "");
+      }
+
+      async function generatePKCEPair() {
+        // Generate the random byte array for the code verifier
+        const length = 32; // 32 bytes = 256 bits
+        const array = new Uint8Array(length);
+        window.crypto.getRandomValues(array);
+
+        log1("1:", array, "\n");
+        log2("1:", array, "\n");
+
+        // Convert the byte array to a base64 URL-encoded string for the code verifier
+        const codeVerifier = base64urlEncode(array);
+        log1("2:", codeVerifier, "\n");
+        log2("2:", codeVerifier, "\n");
+
+        // Convert the code verifier (base64 URL-encoded string) back to an ArrayBuffer
+        const encoder = new TextEncoder();
+        const codeVerifierBuffer = encoder.encode(codeVerifier);
+
+        log2("2a:", codeVerifierBuffer, "\n");
+
+        // Generate the SHA-256 hash for the code challenge from the ASCII representation of the code verifier
+        const digest1 = await crypto.subtle.digest("SHA-256", array);
+        const digest2 = await crypto.subtle.digest("SHA-256", codeVerifierBuffer);
+
+        log1("3:", new Uint8Array(digest1), "\n");
+        log2("3:", new Uint8Array(digest2), "\n");
+
+        const codeChallenge1 = base64urlEncode(new Uint8Array(digest1));
+        const codeChallenge2 = base64urlEncode(new Uint8Array(digest2));
+
+        log1("4:", codeChallenge1, "\n");
+        log2("4:", codeChallenge2, "\n");
+
+        return { codeVerifier, codeChallenge2 };
+      }
+
+      function base64urlEncode(uint8Array) {
+        // Convert the Uint8Array to a string of characters
+        let chars = "";
+        for (let i = 0; i < uint8Array.length; i++) {
+          chars += String.fromCharCode(uint8Array[i]);
+        }
+
+        // Convert to Base64 and make it URL-safe
+        return btoa(chars)
+          .replace(/\+/g, "-") // Replace '+' with '-'
+          .replace(/\//g, "_") // Replace '/' with '_'
+          .replace(/=/g, ""); // Remove '=' padding
+      }
+
+      const run = document.getElementById("run");
+
+      run.addEventListener("click", async function () {
+        try {
+          const { codeVerifier, codeChallenge } = await generatePKCEPair();
+        } catch (err) {
+          log1("Error creating PKCE pair:", err);
+        }
+      });
+    </script>
+  </body>
+</html>
