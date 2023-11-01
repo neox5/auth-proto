@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JS-PKCE - Callback</title>
+    <style>
+      a {
+        display: block;
+      }
+      textarea {
+        width: 100%; /* or specific width like 500px */
+        height: 300px; /* or your desired height */
+        background-color: #f0f0f0; /* light grey background */
+        color: #333; /* dark text color for readability */
+        font-family: monospace; /* monospace font for log readability */
+        border: 1px solid #ccc; /* subtle border */
+        padding: 10px;
+        overflow-y: auto; /* enable vertical scrolling */
+        resize: none; /* disable resizing */
+      }
+    </style>
+  </head>
+  <body>
+    <a href="http://localhost:4201">home</a>
+    <hr />
+    <button id="logout">Logout</button> <button id="clear">Clear Log</button>
+    <textarea id="log" readonly></textarea>
+    <script>
+      function loadLog() {
+        const log = localStorage.getItem("log");
+        if (log) {
+          const el = document.getElementById("log");
+          el.value = log;
+        }
+      }
+
+      function log(...args) {
+        const el = document.getElementById("log");
+        const msg = args.join(" ") + "\n";
+        let log = localStorage.getItem("log");
+        if (!log) log = "";
+        log += msg;
+
+        console.log(msg);
+
+        el.value += msg;
+        el.scrollTop = el.scrollHeight; // Scroll to the bottom
+
+        localStorage.setItem("log", log);
+      }
+
+      function clearLog() {
+        const el = document.getElementById("log");
+        el.value = "";
+        localStorage.setItem("log", "");
+      }
+
+      function saveObjectToLocalStorage(obj) {
+        if (typeof obj === "object") Object.entries(obj).forEach(([key, value]) => localStorage.setItem(key, value));
+      }
+
+      function parseQueryParams() {
+        const params = new URLSearchParams(window.location.search);
+        let code;
+        for (const [key, value] of params) {
+          log(`${key}: ${value}`);
+          if (key === "code") {
+            code = value;
+          }
+        }
+
+        if (code) {
+          const codeVerifier = localStorage.getItem("codeVerifier"); // Retrieve the stored code verifier
+          exchangeCodeForToken(code, codeVerifier)
+            .then((data) => saveObjectToLocalStorage(data))
+            .catch((error) => {
+              log("Error exchanging code for token:", error);
+            });
+        }
+      }
+
+      function exchangeCodeForToken(code, codeVerifier) {
+        const tokenEndpoint = "http://localhost:8080/realms/keycloak-test/protocol/openid-connect/token";
+        const clientId = "js-pkce"; // Replace with your client's ID
+        const redirectUri = "http://localhost:4201/callback"; // Replace with your redirect URI
+
+        const headers = new Headers({
+          "Content-Type": "application/x-www-form-urlencoded",
+        });
+
+        const body = new URLSearchParams({
+          client_id: clientId,
+          grant_type: "authorization_code",
+          code: code,
+          redirect_uri: redirectUri,
+          code_verifier: codeVerifier,
+        });
+
+        return fetch(tokenEndpoint, {
+          method: "POST",
+          headers: headers,
+          body: body,
+        }).then((response) => {
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          return response.json();
+        });
+      }
+
+      const logout = document.getElementById("logout");
+      const clear = document.getElementById("clear");
+
+      logout.addEventListener("click", function () {
+        log("hello logout...");
+        const issuer = "http://localhost:8080/realms/keycloak-test";
+        const baseUrl = `${issuer}/protocol/openid-connect/logout`;
+        const clientId = "js-pkce";
+
+        const idToken = localStorage.getItem("id_token");
+
+        localStorage.clear(); // remove all entries
+
+        const logoutQueryParams = new URLSearchParams({
+          post_logout_redirect_uri: "http://localhost:4201",
+          id_token_hint: idToken,
+        });
+
+        const logoutUrl = `${baseUrl}?${logoutQueryParams.toString()}`;
+
+        window.location.href = logoutUrl;
+      });
+
+      clear.addEventListener("click", clearLog);
+
+      loadLog();
+
+      parseQueryParams();
+    </script>
+  </body>
+</html>

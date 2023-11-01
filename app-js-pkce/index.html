@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JS-PKCE</title>
+    <style>
+      a {
+        display: block;
+      }
+      textarea {
+        width: 100%; /* or specific width like 500px */
+        height: 300px; /* or your desired height */
+        background-color: #f0f0f0; /* light grey background */
+        color: #333; /* dark text color for readability */
+        font-family: monospace; /* monospace font for log readability */
+        border: 1px solid #ccc; /* subtle border */
+        padding: 10px;
+        overflow-y: auto; /* enable vertical scrolling */
+        resize: none; /* disable resizing */
+      }
+    </style>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/js-sha256/0.10.1/sha256.min.js"
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    ></script>
+  </head>
+  <body>
+    <button id="login">Login</button> <button id="clear">Clear Log</button>
+    <textarea id="log" readonly></textarea>
+    <script>
+      function loadLog() {
+        const log = localStorage.getItem("log");
+        if (log) {
+          const el = document.getElementById("log");
+          el.value = log;
+        }
+      }
+
+      function log(...args) {
+        const el = document.getElementById("log");
+        const msg = args.join(" ") + "\n";
+        let log = localStorage.getItem("log");
+        if (!log) log = "";
+        log += msg;
+
+        console.log(msg);
+
+        el.value += msg;
+        el.scrollTop = el.scrollHeight; // Scroll to the bottom
+
+        localStorage.setItem("log", log);
+      }
+
+      function clearLog() {
+        const el = document.getElementById("log");
+        el.value = "";
+        localStorage.setItem("log", "");
+      }
+
+      async function generatePKCEPair() {
+        // Generate the random byte array for the code verifier
+        const length = 32; // 32 bytes = 256 bits
+        const array = new Uint8Array(length);
+        window.crypto.getRandomValues(array);
+
+        // Convert the byte array to a base64 URL-encoded string for the code verifier
+        const codeVerifier = base64urlEncode(array);
+
+        // Convert the code verifier (base64 URL-encoded string) back to an ArrayBuffer
+        const encoder = new TextEncoder();
+        const codeVerifierBuffer = encoder.encode(codeVerifier);
+
+        log("start crypto.subtle.digest");
+
+        // Generate the SHA-256 hash for the code challenge from the ASCII representation of the code verifier
+        const digest = await crypto.subtle.digest("SHA-256", codeVerifierBuffer);
+        const codeChallenge = base64urlEncode(new Uint8Array(digest));
+
+        log("finished crypto.subtle.digest", JSON.stringify({ codeVerifier, codeChallenge }));
+
+        return { codeVerifier, codeChallenge };
+      }
+
+      async function generatePKCEPair2() {
+        // Generate the random byte array for the code verifier
+        const length = 32; // 32 bytes = 256 bits
+        const array = new Uint8Array(length);
+        window.crypto.getRandomValues(array);
+
+        // Convert the byte array to a base64 URL-encoded string for the code verifier
+        const codeVerifier = base64urlEncode(array);
+
+        // Using js-sha256 to generate SHA-256 hash
+        const hash = sha256(codeVerifier);
+
+        // Convert the hex string of the hash to a Uint8Array
+        const buffer = hexStringToUint8Array(hash);
+
+        // Base64 URL encode the result
+        const codeChallenge = base64urlEncode(buffer);
+
+        return { codeVerifier, codeChallenge };
+      }
+
+      function hexStringToUint8Array(hexString) {
+        const length = hexString.length / 2;
+        const uint8Array = new Uint8Array(length);
+        for (let i = 0; i < length; i++) {
+          uint8Array[i] = parseInt(hexString.substr(i * 2, 2), 16);
+        }
+        return uint8Array;
+      }
+
+      function base64urlEncode(uint8Array) {
+        // Convert the Uint8Array to a string of characters
+        let chars = "";
+        for (let i = 0; i < uint8Array.length; i++) {
+          chars += String.fromCharCode(uint8Array[i]);
+        }
+
+        // Convert to Base64 and make it URL-safe
+        return btoa(chars)
+          .replace(/\+/g, "-") // Replace '+' with '-'
+          .replace(/\//g, "_") // Replace '/' with '_'
+          .replace(/=/g, ""); // Remove '=' padding
+      }
+
+      function createAuthorizationRequestUrl(issuer, clientId, redirectUri, scope, codeChallenge) {
+        // Base URL for the authorization endpoint
+        const baseUrl = `${issuer}/protocol/openid-connect/auth`;
+
+        // Construct the query parameters
+        const queryParams = new URLSearchParams({
+          response_type: "code",
+          client_id: clientId,
+          redirect_uri: redirectUri,
+          scope: scope,
+          code_challenge: codeChallenge,
+          code_challenge_method: "S256",
+        });
+
+        // Return the complete URL
+        return `${baseUrl}?${queryParams.toString()}`;
+      }
+
+      const login = document.getElementById("login");
+      const clear = document.getElementById("clear");
+
+      login.addEventListener("click", async function () {
+        const issuer = "http://localhost:8080/realms/keycloak-test";
+        const clientId = "js-pkce";
+        const redirectUri = "http://localhost:4201/callback";
+        const scope = "openid profile email";
+
+        try {
+          const { codeVerifier, codeChallenge } = await generatePKCEPair2();
+          localStorage.setItem("codeVerifier", codeVerifier);
+          
+          log("Code Verifier:", codeVerifier);
+          log("Code Challenge:", codeChallenge);
+
+          const authUrl = createAuthorizationRequestUrl(issuer, clientId, redirectUri, scope, codeChallenge);
+
+          window.location.href = authUrl;
+        } catch (err) {
+          log("Error creating PKCE pair:", err);
+        }
+      });
+
+      clear.addEventListener("click", clearLog);
+
+      loadLog();
+    </script>
+  </body>
+</html>
